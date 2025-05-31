@@ -1,4 +1,4 @@
-name: clip_prefix_caption
+name: RORPCap
 channels:
   - defaults
 dependencies:
@@ -11,3 +11,4 @@ dependencies:
    - regex
    - tqdm
    - git+https://github.com/openai/CLIP.git
+   - mamba-ssm==2.2.2
