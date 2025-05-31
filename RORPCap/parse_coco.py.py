@@ -1,0 +1,101 @@
+import torch
+import skimage.io as io
+import clip
+from PIL import Image
+import pickle
+import json
+import os
+from tqdm import tqdm
+import argparse
+annotations = json.load(open('dataset_coco.json'))['images']
+
+def load_data():
+    data = {'train': [], 'val': []}
+
+    for item in annotations:
+        file_name = item['filename'].split('_')[-1]
+        if item['split'] == 'train' or item['split'] == 'restval':
+            data['train'].append({'file_name': file_name, 'cocoid': item['cocoid']})
+        elif item['split'] == 'val':
+            data['val'].append({'file_name': file_name, 'cocoid': item['cocoid']})
+    return data
+
+def main(clip_model_type: str):
+    device = torch.device('cuda:0')
+    clip_model_name = clip_model_type.replace('/', '_')
+    out_path = f"./data/coco/oscar_spLit_{clip_model_name}_train.pkl"
+
+    clip_model, preprocess = clip.load(clip_model_type, device=device, jit=False)
+
+    with open("/annotations2017/captions_train2017.json", 'r') as f:
+        data_train = json.load(f)
+        data1 = data_train['annotations']
+
+    with open("/annotations2017/captions_val2017.json", 'r') as f:
+        data_val = json.load(f)
+        data2 = data_val['annotations']
+
+    for o in tqdm(range(len(data2))):
+        dt = data2[o]
+        data1.append(dt)
+    print(len(data1))
+    print("%0d captions loaded from json " % len(data1))
+    data_small_train = load_data()
+    data_small_train_id = []
+    for k in tqdm(range(len(data_small_train['train']))):
+        data_small_train_id.append(data_small_train['train'][k]['cocoid'])
+    all_embeddings = []
+    all_visual = []
+    all_captions = []
+    smallcap_train = []
+    for j in tqdm(range(len(data1))):
+        d1 = data1[j]
+        img_id1 = d1["image_id"]
+        if img_id1 in data_small_train_id:
+            smallcap_train.append(d1)
+    print(len(smallcap_train))
+    for i in tqdm(range(len(smallcap_train))):
+        d = smallcap_train[i]
+        img_id = d["image_id"]
+        filename = f'/data/train2017/{int(img_id):012d}.jpg'
+
+        image = io.imread(filename)
+        image = preprocess(Image.fromarray(image)).unsqueeze(0).to(device)
+        with torch.no_grad():
+            prefix = clip_model.encode_image(image).cpu()
+        d["clip_embedding"] = i
+        all_embeddings.append(prefix)
+        all_captions.append(d)
+        if (i + 1) % 10000 == 0:
+            with open(out_path, 'wb') as f:
+                pickle.dump({"clip_embedding": torch.cat(all_embeddings, dim=0), "captions": all_captions}, f)
+
+    with open(out_path, 'wb') as f:
+        pickle.dump({"clip_embedding": torch.cat(all_embeddings, dim=0), "captions": all_captions}, f)
+
+    print('Done')
+    print("%0d embeddings saved " % len(all_visual))
+    return 0
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--clip_model_type', default="ViT-B/32", choices=('RN50', 'RN101', 'RN50x4', 'ViT-B/32'))
+    args = parser.parse_args()
+    exit(main(args.clip_model_type))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
